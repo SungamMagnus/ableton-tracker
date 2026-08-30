@@ -4,6 +4,9 @@ A local dashboard for browsing your Ableton Live project folders — see every
 project's BPM, key, size, file/backup counts, and creation/modified dates at
 a glance, plus your own rating, status, tags, and notes on top.
 
+<img width="1669" height="680" alt="Screenshot 2026-08-30 at 20 43 56" src="https://github.com/user-attachments/assets/dab197fa-2d54-4aeb-9cad-1adaa2bef1ff" />
+
+
 It's a small Node.js HTTP server with a plain HTML/JS frontend. Everything
 runs locally; nothing leaves your machine.
 
