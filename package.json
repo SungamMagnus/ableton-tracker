@@ -1,0 +1,10 @@
+{
+  "name": "ableton-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Local dashboard for browsing Ableton Live project folders.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

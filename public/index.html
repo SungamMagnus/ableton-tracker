@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ableton Tracker</title>
+<link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-title">
+      <h1>Ableton Projects</h1>
+      <span id="summary" class="summary">Loading…</span>
+      <span class="folder-sep">·</span><span id="folderPath" class="folder-path"></span>
+    </div>
+    <div class="topbar-controls">
+      <input id="search" type="search" placeholder="Filter projects…" autocomplete="off" />
+      <button id="changeFolder" title="Choose which folder to scan">Change Folder…</button>
+      <button id="refresh" title="Rescan folder">⟳ Refresh</button>
+    </div>
+  </header>
+
+  <main>
+    <table id="table">
+      <thead>
+        <tr>
+          <th data-key="name">Name</th>
+          <th data-key="location">Location</th>
+          <th data-key="bpm">BPM</th>
+          <th data-key="key">Key</th>
+          <th data-key="createdAt">Created</th>
+          <th data-key="modifiedAt" class="sorted desc">Modified</th>
+          <th data-key="rating">Rating</th>
+          <th data-key="status">Status</th>
+          <th>Tags</th>
+          <th>Notes</th>
+          <th data-key="sizeBytes">Size</th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div id="empty" class="empty hidden">No projects match your filter.</div>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
