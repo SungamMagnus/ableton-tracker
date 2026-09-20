@@ -23,6 +23,10 @@ const searchEl = document.getElementById('search');
 const refreshEl = document.getElementById('refresh');
 const changeFolderEl = document.getElementById('changeFolder');
 const tableEl = document.getElementById('table');
+const importBtnEl = document.getElementById('importBtn');
+const importFileEl = document.getElementById('importFile');
+const exportBtnEl = document.getElementById('exportBtn');
+const exportMenuEl = document.getElementById('exportMenu');
 
 function formatSize(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -406,6 +410,54 @@ changeFolderEl.addEventListener('click', async () => {
   } finally {
     changeFolderEl.disabled = false;
     changeFolderEl.textContent = 'Change Folder…';
+  }
+});
+
+exportBtnEl.addEventListener('click', (e) => {
+  e.stopPropagation();
+  exportMenuEl.classList.toggle('hidden');
+});
+
+exportMenuEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('button[data-format]');
+  if (!btn) return;
+  exportMenuEl.classList.add('hidden');
+  window.location.href = `/api/export?format=${btn.dataset.format}`;
+});
+
+document.addEventListener('click', () => exportMenuEl.classList.add('hidden'));
+
+importBtnEl.addEventListener('click', () => importFileEl.click());
+
+importFileEl.addEventListener('change', async () => {
+  const file = importFileEl.files[0];
+  if (!file) return;
+  importBtnEl.disabled = true;
+  const originalLabel = importBtnEl.textContent;
+  importBtnEl.textContent = 'Importing…';
+  try {
+    const buf = await file.arrayBuffer();
+    const res = await fetch(`/api/import?filename=${encodeURIComponent(file.name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: buf,
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      alert(data.error || 'Import failed.');
+      return;
+    }
+    let msg = `Updated ${data.applied} project${data.applied === 1 ? '' : 's'}.`;
+    if (data.stored) msg += ` ${data.stored} more saved for when ${data.stored === 1 ? 'its project reappears' : 'their projects reappear'} in a scan.`;
+    if (data.skipped) msg += ` ${data.skipped} row${data.skipped === 1 ? '' : 's'} skipped (no matching project).`;
+    alert(msg);
+    await load(true);
+  } catch {
+    alert("Couldn't import that file.");
+  } finally {
+    importBtnEl.disabled = false;
+    importBtnEl.textContent = originalLabel;
+    importFileEl.value = '';
   }
 });
 

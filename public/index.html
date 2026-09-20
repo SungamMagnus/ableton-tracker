@@ -15,8 +15,17 @@
     </div>
     <div class="topbar-controls">
       <input id="search" type="search" placeholder="Filter projects…" autocomplete="off" />
-      <button id="changeFolder" title="Choose which folder to scan">Change Folder…</button>
-      <button id="refresh" title="Rescan folder">⟳ Refresh</button>
+      <button id="importBtn" class="btn" title="Import ratings, status, tags and notes from a JSON or Excel file">Import…</button>
+      <div class="menu-wrap">
+        <button id="exportBtn" class="btn" title="Export all metadata">Export ▾</button>
+        <div id="exportMenu" class="menu hidden">
+          <button type="button" data-format="json">Export as JSON…</button>
+          <button type="button" data-format="xlsx">Export as Excel (.xlsx)…</button>
+        </div>
+      </div>
+      <input id="importFile" type="file" accept=".json,application/json,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden />
+      <button id="changeFolder" class="btn" title="Choose which folder to scan">Change Folder…</button>
+      <button id="refresh" class="btn" title="Rescan folder">⟳ Refresh</button>
     </div>
   </header>
 

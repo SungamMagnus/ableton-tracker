@@ -33,6 +33,8 @@ body {
 }
 
 .topbar {
+  position: relative;
+  z-index: 20;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -111,8 +113,7 @@ body {
   color: var(--text-tertiary);
 }
 
-button#refresh,
-button#changeFolder {
+.btn {
   background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 7px;
@@ -124,20 +125,54 @@ button#changeFolder {
   white-space: nowrap;
 }
 
-button#refresh:hover,
-button#changeFolder:hover {
+.btn:hover {
   background: var(--bg-row-hover);
 }
 
-button#refresh:active,
-button#changeFolder:active {
+.btn:active {
   transform: translateY(1px);
 }
 
-button#changeFolder:disabled {
+.btn:disabled {
   opacity: 0.6;
   cursor: default;
   transform: none;
+}
+
+.menu-wrap {
+  position: relative;
+}
+
+.menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  min-width: 190px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.menu button {
+  background: none;
+  border: none;
+  color: var(--text);
+  font-size: 13px;
+  font-family: var(--font);
+  text-align: left;
+  padding: 7px 9px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.menu button:hover {
+  background: var(--bg-row-hover);
 }
 
 main {

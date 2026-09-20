@@ -29,6 +29,17 @@ That metadata stays attached to a project even if you later rename it or
 move it to a different folder, since each project folder gets a small
 hidden ID marker rather than being tracked by its path.
 
+### Backing up / editing your metadata
+
+Use **Export** to save all your ratings, statuses, tags, and notes (plus
+the scanned project info) as a `.json` or `.xlsx` file — handy for backups,
+bulk-editing ratings and notes in a spreadsheet, or moving metadata to
+another Mac. **Import** reads one of those files back in and merges it into
+your library, matched by each project's stable ID (falling back to its
+relative path if the ID isn't found). Rows for projects that aren't
+currently scanned are kept and applied automatically once that project
+reappears, e.g. after reconnecting an external drive.
+
 ## Running from source
 
 ```sh

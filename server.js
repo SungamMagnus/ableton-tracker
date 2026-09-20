@@ -5,6 +5,7 @@ const path = require('path');
 const zlib = require('zlib');
 const crypto = require('crypto');
 const { execFile } = require('child_process');
+const { buildXlsxBuffer, parseXlsxBuffer } = require('./lib/xlsx');
 
 const DEFAULT_BASE_DIR = process.env.ABLETON_DIR ||
   path.join(os.homedir(), 'Music', 'Ableton');
@@ -61,6 +62,123 @@ function escapeAppleScriptString(str) {
 const STATUSES = new Set(['sketch', 'needs-arrange', 'needs-mix', 'done']);
 const MAX_TAGS = 2;
 const MAX_DESCRIPTION_LEN = 1000;
+
+// Columns used for the flat export/import formats (JSON export includes the
+// full project object; this list is what actually round-trips through XLSX,
+// and what an import looks for by header name).
+const EXPORT_FIELDS = [
+  { key: 'id', header: 'ID' },
+  { key: 'name', header: 'Name' },
+  { key: 'relPath', header: 'Relative Path' },
+  { key: 'year', header: 'Year' },
+  { key: 'subgroup', header: 'Subgroup' },
+  { key: 'bpm', header: 'BPM' },
+  { key: 'key', header: 'Key' },
+  { key: 'createdAt', header: 'Created' },
+  { key: 'modifiedAt', header: 'Modified' },
+  { key: 'sizeBytes', header: 'Size (bytes)' },
+  { key: 'fileCount', header: 'File Count' },
+  { key: 'alsCount', header: 'ALS Count' },
+  { key: 'backupCount', header: 'Backup Count' },
+  { key: 'rating', header: 'Rating' },
+  { key: 'status', header: 'Status' },
+  { key: 'tags', header: 'Tags' },
+  { key: 'description', header: 'Notes' },
+];
+
+const IMPORT_FIELD_ALIASES = {
+  id: ['id'],
+  relPath: ['relative path', 'relpath', 'path'],
+  rating: ['rating'],
+  status: ['status'],
+  tags: ['tags', 'tag'],
+  description: ['notes', 'note', 'description'],
+};
+
+function formatExportCell(key, value) {
+  if (key === 'tags') return Array.isArray(value) ? value.join('; ') : '';
+  if (key === 'createdAt' || key === 'modifiedAt') return value ? new Date(value).toISOString() : '';
+  if (value === null || value === undefined) return '';
+  return value;
+}
+
+// Shared by /api/meta (one field at a time from the UI) and /api/import
+// (a full record from a JSON or XLSX file), so imported data is clamped
+// exactly the same way manual edits are.
+function sanitizePatch(patch) {
+  const out = {};
+  if ('rating' in patch) {
+    const r = patch.rating;
+    if (r === null || r === undefined || r === '') {
+      out.rating = null;
+    } else {
+      const n = Math.round(Number(r));
+      out.rating = Number.isFinite(n) ? Math.min(10, Math.max(1, n)) : null;
+    }
+  }
+  if ('status' in patch) {
+    out.status = STATUSES.has(patch.status) ? patch.status : null;
+  }
+  if ('tags' in patch) {
+    const tags = Array.isArray(patch.tags) ? patch.tags : [];
+    out.tags = tags
+      .map((t) => String(t).trim().slice(0, 24))
+      .filter(Boolean)
+      .filter((t, i, arr) => arr.indexOf(t) === i)
+      .slice(0, MAX_TAGS);
+  }
+  if ('description' in patch) {
+    out.description = String(patch.description ?? '').trim().slice(0, MAX_DESCRIPTION_LEN);
+  }
+  return out;
+}
+
+function parseImportJson(buf) {
+  const data = JSON.parse(buf.toString('utf8'));
+  const arr = Array.isArray(data) ? data : Array.isArray(data.projects) ? data.projects : null;
+  if (!arr) throw new Error('Expected a JSON array of projects, or an object with a "projects" array');
+  return arr.map((p) => ({
+    id: typeof p.id === 'string' && p.id ? p.id : null,
+    relPath: typeof p.relPath === 'string' && p.relPath ? p.relPath : null,
+    rating: p.rating,
+    status: p.status,
+    tags: p.tags,
+    description: p.description,
+  }));
+}
+
+function parseImportXlsx(buf) {
+  const rows = parseXlsxBuffer(buf);
+  if (!rows.length) return [];
+
+  const header = rows[0].map((h) => String(h || '').trim().toLowerCase());
+  const colIndex = {};
+  for (const [field, names] of Object.entries(IMPORT_FIELD_ALIASES)) {
+    const idx = header.findIndex((h) => names.includes(h));
+    if (idx !== -1) colIndex[field] = idx;
+  }
+  if (colIndex.id === undefined) {
+    throw new Error('No "ID" column found — this doesn\'t look like an Ableton Tracker export');
+  }
+
+  const records = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.every((c) => c === '' || c == null)) continue;
+    const get = (field) => (colIndex[field] !== undefined ? row[colIndex[field]] : undefined);
+    const tagsRaw = get('tags');
+    const rating = get('rating');
+    records.push({
+      id: get('id') ? String(get('id')).trim() : null,
+      relPath: get('relPath') ? String(get('relPath')).trim() : null,
+      rating: rating !== undefined && rating !== '' ? Number(rating) : null,
+      status: get('status') ? String(get('status')).trim() : null,
+      tags: tagsRaw ? String(tagsRaw).split(/[;,]/).map((t) => t.trim()).filter(Boolean) : [],
+      description: get('description') !== undefined ? String(get('description')) : '',
+    });
+  }
+  return records;
+}
 
 const ROOT_NAMES = ['C', 'C#', 'D', 'Eb', 'E', 'F', 'F#', 'G', 'Ab', 'A', 'Bb', 'B'];
 const SCALE_NAMES = [
@@ -338,6 +456,24 @@ function readJsonBody(req) {
   });
 }
 
+function readRawBody(req, maxBytes) {
+  return new Promise((resolve, reject) => {
+    const chunks = [];
+    let size = 0;
+    req.on('data', (chunk) => {
+      size += chunk.length;
+      if (size > maxBytes) {
+        req.destroy();
+        reject(new Error('File too large'));
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
+  });
+}
+
 const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -362,6 +498,112 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  if (url.pathname === '/api/export' && req.method === 'GET') {
+    try {
+      const format = url.searchParams.get('format') === 'xlsx' ? 'xlsx' : 'json';
+      const data = getProjects();
+      const stamp = new Date().toISOString().slice(0, 10);
+
+      if (format === 'xlsx') {
+        const headers = EXPORT_FIELDS.map((f) => f.header);
+        const rows = data.map((p) => EXPORT_FIELDS.map((f) => formatExportCell(f.key, p[f.key])));
+        const buf = buildXlsxBuffer('Projects', headers, rows);
+        res.writeHead(200, {
+          'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'Content-Disposition': `attachment; filename="ableton-tracker-${stamp}.xlsx"`,
+        });
+        res.end(buf);
+      } else {
+        const payload = JSON.stringify(
+          { exportedAt: new Date().toISOString(), baseDir: BASE_DIR, count: data.length, projects: data },
+          null,
+          2
+        );
+        res.writeHead(200, {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Content-Disposition': `attachment; filename="ableton-tracker-${stamp}.json"`,
+        });
+        res.end(payload);
+      }
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: String(err.message || err) }));
+    }
+    return;
+  }
+
+  if (url.pathname === '/api/import' && req.method === 'POST') {
+    readRawBody(req, 25 * 1024 * 1024)
+      .then((buf) => {
+        const filename = url.searchParams.get('filename') || '';
+        let records;
+        try {
+          if (/\.xlsx$/i.test(filename)) {
+            records = parseImportXlsx(buf);
+          } else if (/\.json$/i.test(filename)) {
+            records = parseImportJson(buf);
+          } else if (buf.length >= 2 && buf[0] === 0x50 && buf[1] === 0x4b) {
+            records = parseImportXlsx(buf);
+          } else {
+            records = parseImportJson(buf);
+          }
+        } catch (err) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: `Couldn't read that file: ${err.message || err}` }));
+          return;
+        }
+
+        const projects = getProjects();
+        const byId = new Map(projects.map((p) => [p.id, p]));
+        const byRelPath = new Map(projects.map((p) => [p.relPath, p]));
+
+        const meta = loadMeta();
+        let applied = 0;
+        let stored = 0;
+        let skipped = 0;
+
+        for (const rec of records) {
+          let targetId = null;
+          if (rec.id && byId.has(rec.id)) {
+            targetId = rec.id;
+          } else if (rec.relPath && byRelPath.has(rec.relPath)) {
+            targetId = byRelPath.get(rec.relPath).id;
+          } else if (rec.id) {
+            targetId = rec.id;
+          }
+
+          if (!targetId) {
+            skipped++;
+            continue;
+          }
+
+          const patch = sanitizePatch({
+            rating: rec.rating,
+            status: rec.status,
+            tags: rec.tags,
+            description: rec.description,
+          });
+          const current = meta[targetId] || { rating: null, status: null, tags: [], description: '' };
+          Object.assign(current, patch);
+          meta[targetId] = current;
+
+          if (byId.has(targetId)) applied++;
+          else stored++;
+        }
+
+        saveMeta(meta);
+        cache = null;
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ total: records.length, applied, stored, skipped }));
+      })
+      .catch((err) => {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: String(err.message || err) }));
+      });
+    return;
+  }
+
   if (url.pathname === '/api/meta' && req.method === 'POST') {
     readJsonBody(req)
       .then((body) => {
@@ -374,26 +616,7 @@ const server = http.createServer((req, res) => {
 
         const meta = loadMeta();
         const current = meta[id] || { rating: null, status: null, tags: [], description: '' };
-
-        if ('rating' in patch) {
-          const r = patch.rating;
-          current.rating = r === null ? null : Math.min(10, Math.max(1, Math.round(Number(r))));
-        }
-        if ('status' in patch) {
-          current.status = STATUSES.has(patch.status) ? patch.status : null;
-        }
-        if ('tags' in patch) {
-          const tags = Array.isArray(patch.tags) ? patch.tags : [];
-          current.tags = tags
-            .map((t) => String(t).trim().slice(0, 24))
-            .filter(Boolean)
-            .filter((t, i, arr) => arr.indexOf(t) === i)
-            .slice(0, MAX_TAGS);
-        }
-        if ('description' in patch) {
-          current.description = String(patch.description ?? '').trim().slice(0, MAX_DESCRIPTION_LEN);
-        }
-
+        Object.assign(current, sanitizePatch(patch));
         meta[id] = current;
         saveMeta(meta);
 
