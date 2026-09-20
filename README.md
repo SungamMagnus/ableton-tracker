@@ -50,7 +50,13 @@ Defaults to scanning `~/Music/Ableton`; override with `ABLETON_DIR=/path/to/proj
 
 ## Building the app bundle
 
-The packaged `.app` bundles the Node runtime for both Apple Silicon and
-Intel so recipients don't need Node installed. See `dist/` after running the
-build (not checked into this repo — it's a few hundred MB with both runtimes
-included).
+```sh
+VERSION=2.1 npm run build:mac
+```
+
+Builds a self-contained, ad-hoc-signed `Ableton Tracker.app` (plus a
+matching `.zip`) into `dist/` — bundling the Node runtime for both Apple
+Silicon and Intel so recipients don't need Node installed. `dist/` isn't
+checked into this repo (a few hundred MB with both runtimes included); the
+Node binaries are downloaded from nodejs.org on first build, or reused via
+`NODE_ARM64_BIN` / `NODE_X64_BIN` env vars pointing at existing ones.
